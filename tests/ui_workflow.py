@@ -25,9 +25,9 @@ def run():
         page.get_by_role('button',name='만들기',exact=True).click()
         expect(page.get_by_role('heading',name='에너지 읽기 '+suffix,exact=True)).to_be_visible()
         page.get_by_role('button',name='새 자료 추가',exact=True).first.click()
+        expect(page.get_by_label('정리 방식',exact=True)).to_have_value('detail')
         content=(ROOT/'tests/fixtures/energy.txt').read_text()+'\n\n검증 실행 ID: '+suffix
         page.locator('dialog input[type=file]').set_input_files({'name':'에너지 검증 '+suffix+'.txt','mimeType':'text/plain','buffer':content.encode()})
-        page.get_by_label('정리 방식',exact=True).select_option('detail')
         page.get_by_role('button',name='가져오기',exact=True).click()
         expect(page.get_by_role('heading',name='작업 현황',exact=True)).to_be_visible()
         page.screenshot(path=str(RESULTS/'ui-jobs.png'),full_page=True)
@@ -36,6 +36,8 @@ def run():
         page.get_by_role('button',name='에너지 검증 '+suffix,exact=True).click()
         expect(page.get_by_role('tab',name='요약',exact=True)).to_be_visible()
         expect(page.get_by_role('navigation',name='보고서 목차')).to_be_visible()
+        expect(page.locator('.summary-visual img')).to_be_visible()
+        assert page.locator('.summary-visual img').evaluate('(img)=>img.complete && img.naturalWidth===1200')
         page.get_by_role('navigation',name='보고서 목차').get_by_role('button').first.click()
         expect(page.locator('.report-topic').first).to_be_visible()
         item_id=page.url.split('#item/')[1].split('/')[0]

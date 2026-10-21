@@ -95,7 +95,7 @@ async function newList(){const input=el('input',{placeholder:'예: 읽고 싶은
 function addDialog() {
   const urls=el('textarea',{id:'add-urls',placeholder:'https://www.youtube.com/watch?v=…\nhttps://example.com/article',rows:4});
   const files=el('input',{type:'file',multiple:true,accept:'.txt,.srt,.vtt,.html,.htm','aria-label':'원문 파일 선택'});
-  const mode=el('select',{id:'add-mode'},option('brief','핵심 요약'),option('detail','상세 정리'));
+  const mode=el('select',{id:'add-mode'},option('detail','상세 정리',true),option('brief','핵심 요약'));
   const lists=listPicker(state.view==='list'?[state.listId]:[]);
   const feedback=el('div',{'aria-live':'polite'});
   const drop=el('div',{class:'drop-zone'},el('span',{},'또는 원문·자막 파일을 가져오세요'),files,el('small',{class:'hint'},'TXT · SRT · VTT · HTML / 파일당 최대 12MB'));
@@ -209,7 +209,8 @@ function reportSection(item,source,section,number,depth=0) {
     el('div',{class:'report-intro'},el('p',{},mathText(section.overview.text)),evidenceLinks(item,source,section.overview.sources)));
   function entry(value) {
     const node=el('div',{class:'report-entry'});
-    if(value.item)node.append(summaryItem(item,source,value.item));
+    if(value.narrative)node.append(summaryItem(item,source,{...value.narrative,kind:value.item?.kind||'argument'}));
+    else if(value.item)node.append(summaryItem(item,source,value.item));
     if(value.children)value.children.forEach((child,index)=>node.append(reportSection(item,source,child,number+'.'+(index+1),depth+2)));
     if(value.supporting?.length)node.append(el('div',{class:'report-support'},value.supporting.map(entry)));
     return node;
@@ -232,11 +233,13 @@ function renderTab() {
     });host.append(column);return;
   }
   if(!summary){host.append(empty(activeStates.has(item.status)?'정리하고 있습니다':'아직 요약 결과가 없습니다',activeStates.has(item.status)?'원문 수집과 요약·출력이 끝나면 자동으로 표시됩니다.':'위 오류 안내를 확인하고 엔진을 설정하거나 작업을 다시 시도해 주세요.',button('설정 열기',()=>location.hash='#settings'),'jobs'));return;}
-  if(state.tab==='infographic') {host.append(el('p',{class:'hint'},'검증된 요약을 바탕으로 생성했습니다. 전체 내용과 모든 근거는 요약 탭에서 확인하세요.'),el('img',{class:'output-image',src:'/api/items/'+item.id+'/download/png?v='+encodeURIComponent(item.result_path),alt:summary.title+' 인포그래픽'}));return;}
+  if(state.tab==='infographic') {host.append(el('p',{class:'hint'},'전체 주제의 핵심과 주요 관계를 함께 보여줍니다. 상세 설명과 근거는 요약 탭에서 확인하세요.'),el('img',{class:'output-image',src:'/api/items/'+item.id+'/download/png?v='+encodeURIComponent(item.result_path),alt:summary.title+' 인포그래픽'}));return;}
   if(state.tab==='pdf') {host.append(el('p',{class:'hint'},'첫 페이지는 인포그래픽, 이후는 상세 요약과 근거입니다. 미리보기가 지원되지 않으면 PDF를 다운로드해 주세요.'),el('iframe',{class:'pdf-frame',src:'/api/items/'+item.id+'/preview/pdf?v='+encodeURIComponent(item.result_path),title:'자료 PDF 미리보기'}));return;}
   const column=el('div',{class:'reading-column'});
   if(summary.partial)column.append(el('p',{class:'inline-error'},'부분 완료 · '+summary.failed_chunks+'개 구간 미처리. 빠진 구간: '+summary.missing_segments.join(', ')));
   if(summary.verification==='test-double')column.append(el('p',{class:'inline-error'},'검증용 AI 테스트 대역으로 만든 결과입니다. 실제 AI 요약이 아닙니다.'));
+  if(summary.report?.version!=='chansum-report-3')column.append(el('p',{class:'inline-info'},'이 자료는 이전 방식으로 정리한 결과입니다. 위의 재생성에서 상세 정리를 선택하면 새 인포그래픽 요약과 설명문을 만듭니다. AI 이용량이 발생할 수 있습니다.'));
+  column.append(el('figure',{class:'summary-visual'},el('figcaption',{},el('strong',{},'한눈에 보는 인포그래픽 요약'),button('크게 보기',()=>{state.tab='infographic';renderTab();},'quiet')),el('img',{src:'/api/items/'+item.id+'/download/png?v='+encodeURIComponent(item.result_path),alt:summary.title+' 전체 주제 인포그래픽 요약'})));
   column.append(el('div',{class:'overview'},mathText(summary.message.text),evidenceLinks(item,source,summary.message.sources)));
   if(summary.report) {
     const toc=el('nav',{class:'report-toc','aria-label':'보고서 목차'},el('h2',{},'목차'));

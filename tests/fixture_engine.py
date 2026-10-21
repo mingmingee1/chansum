@@ -60,8 +60,10 @@ def fixture_plan(units):
     for start in range(0,len(units),12):
         part=units[start:start+12]
         sections.append({'heading':f'검증용 주제 {start//12+1}',
+            'digest':{'text':'근거·조건 보존과 시각 요약 출력을 확인하는 테스트 주제입니다.','claim_ids':[part[0]['id']]},
             'overview':{'text':'원문 근거의 주장과 적용 조건을 확인합니다.','claim_ids':[part[0]['id']]},
-            'groups':[{'heading':'내용과 관련 조건','entries':[{'claim_id':u['id'],'support_ids':[]} for u in part]}]})
+            'groups':[{'heading':'내용과 관련 조건','entries':[{'claim_id':u['id'],'support_ids':[],
+                'explanation':{'text':u['text'][:1000],'claim_ids':[u['id']]}} for u in part]}]})
     nodes=[{'key':f'n{i}','label':f'주요 근거 {i+1}','detail':'아래 상세 설명에서 보관 원문과 근거를 확인합니다.',
             'claim_ids':[units[min(i,len(units)-1)]['id']]} for i in range(min(4,max(2,len(units))))]
     return {'title':'검증용 자료 · 에너지와 저장 기술',

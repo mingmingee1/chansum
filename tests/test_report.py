@@ -38,7 +38,9 @@ def test_editor_rejects_omission_duplicate_and_invalid_claim(mutation,code):
 
 def test_conditions_and_exceptions_stay_attached_to_their_claim():
     source,_,units=example();plan=fixture_plan(units)
-    plan['sections'][0]['groups'][0]['entries']=[{'claim_id':units[0]['id'],'support_ids':[units[2]['id'],units[3]['id']]},{'claim_id':units[1]['id'],'support_ids':[]}]
+    entries=plan['sections'][0]['groups'][0]['entries']
+    entries[0]['support_ids']=[units[2]['id'],units[3]['id']]
+    plan['sections'][0]['groups'][0]['entries']=entries[:2]
     report=materialize(validate_plan(plan,units,source),units)
     entry=report['sections'][0]['groups'][0]['entries'][0]
     assert [x['item']['kind'] for x in entry['supporting']]==['condition','exception']
@@ -98,6 +100,45 @@ def test_editor_receives_original_quotes_even_when_extraction_paraphrases():
     units=evidence_units(results,source);prompt=edit_prompt(units)
     assert '장치 B의 정격 전력은 60 W다.' in prompt
     assert 'B는 60 W의 전력으로 동작한다.' in prompt
+
+
+def test_edited_explanation_is_preserved_separately_from_extracted_evidence():
+    source,_,units=example();plan=fixture_plan(units)
+    narrative={'text':'장치 A의 100 W는 정격 운전 상태의 전력입니다. 기동 순간의 값과 구분해야 하므로 이 값을 모든 시점에 그대로 적용할 수는 없습니다.',
+               'claim_ids':[units[0]['id'],units[3]['id']]}
+    plan['sections'][0]['groups'][0]['entries'][0]['explanation']=narrative
+    report=materialize(validate_plan(plan,units,source),units)
+    entry=report['sections'][0]['groups'][0]['entries'][0]
+    assert entry['narrative']['text']==narrative['text']
+    assert entry['narrative']['sources']==['p1','p4']
+    assert entry['item']['text']==source['segments'][0]['text']
+
+
+@pytest.mark.parametrize('target',['digest','narrative'])
+def test_new_visual_digest_and_explanation_reject_unknown_evidence(target):
+    source,_,units=example();plan=fixture_plan(units)
+    value=plan['sections'][0]['digest'] if target=='digest' else plan['sections'][0]['groups'][0]['entries'][0]['explanation']
+    value['claim_ids']=['invented']
+    with pytest.raises(WorkError) as caught:validate_plan(plan,units,source)
+    assert caught.value.code=='invalid_report_evidence'
+
+
+def test_explanation_must_still_ground_its_primary_claim():
+    source,_,units=example();plan=fixture_plan(units)
+    plan['sections'][0]['groups'][0]['entries'][0]['explanation']['claim_ids']=[units[1]['id']]
+    with pytest.raises(WorkError) as caught:validate_plan(plan,units,source)
+    assert caught.value.code=='invalid_report_evidence'
+
+
+def test_editor_mode_reaches_actual_adapter_and_changes_editing_instruction(tmp_path,monkeypatch):
+    from chansum.engine import Engine
+    from chansum.config import Secrets
+    source,_,units=example();engine=Engine(Secrets(tmp_path/'private'));prompts=[]
+    monkeypatch.setattr(engine,'_http',lambda prompt,*args:prompts.append(prompt) or fixture_plan(units))
+    engine.edit_report(units,{'mode':'brief'},{'engine':'openai'},tmp_path)
+    engine.edit_report(units,{'mode':'detail'},{'engine':'openai'},tmp_path)
+    assert '핵심 요약 모드' in prompts[0] and '상세 정리 모드' in prompts[1]
+    assert prompts[0]!=prompts[1]
 
 
 class WholeDocumentEngine(FixtureEngine):

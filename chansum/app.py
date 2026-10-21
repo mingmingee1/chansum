@@ -33,7 +33,7 @@ from .deletion import mark as mark_deletions, cleanup as cleanup_deletions, pend
 
 class AddURLs(BaseModel):
     urls: list[str] = Field(min_length=1,max_length=30)
-    mode: str = Field(default='brief',pattern='^(brief|detail)$')
+    mode: str = Field(default='detail',pattern='^(brief|detail)$')
     list_ids: list[str] = Field(default_factory=list,max_length=100)
 
 
@@ -44,7 +44,7 @@ class PatchItem(BaseModel):
 
 
 class JobOptions(BaseModel):
-    mode: str = Field(default='brief',pattern='^(brief|detail)$')
+    mode: str = Field(default='detail',pattern='^(brief|detail)$')
     refresh: bool = False
 
 
@@ -204,7 +204,7 @@ def create_app(data_dir: Path | None = None, private_dir: Path | None = None, en
         return {'results':results,'rejected':rejected}
 
     @app.post('/api/items/files')
-    async def add_files(files: list[UploadFile] = File(...), mode: str = Form('brief'), list_ids: str = Form('[]')):
+    async def add_files(files: list[UploadFile] = File(...), mode: str = Form('detail'), list_ids: str = Form('[]')):
         if mode not in ('brief','detail') or len(files)>20:
             raise WorkError('invalid_input','한 번에 파일 20개까지 가져올 수 있습니다.')
         try:

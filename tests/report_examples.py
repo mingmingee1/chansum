@@ -30,8 +30,23 @@ def bundle(kind='comparison'):
     units=evidence_units(extraction,source)
     c=lambda i:units[i-1]['id']
     ref=lambda text,*ids:{'text':text,'claim_ids':[c(i) for i in ids]}
-    entry=lambda i,*support:{'claim_id':c(i),'support_ids':[c(j) for j in support]}
-    topic=lambda heading,overview,group,entries:{'heading':heading,'overview':overview,'groups':[{'heading':group,'entries':entries}]}
+    prose={
+        1:r'전력 P는 에너지 소비의 빠르기이고, 에너지 E는 일정 시간 동안 소비한 양입니다. 따라서 W로 표시한 전력과 J로 표시한 에너지는 서로 다른 물리량입니다. 전력이 일정하게 유지되는 구간에서만 \(E=Pt\)를 그대로 적용할 수 있습니다.',
+        2:'장치 A는 정격 전력 100 W로 10 s 동안 작동할 때 1,000 J를 사용합니다. 이 결과에는 작동하는 동안 정격 전력이 유지된다는 전제가 있습니다. 기동 순간이나 운전 모드가 달라지는 구간은 같은 값으로 계산하지 않고 별도로 확인해야 합니다.',
+        3:'장치 B의 전력은 60 W이고, 같은 10 s 동안 사용하는 에너지는 600 J입니다. A와 비교할 수 있는 이유는 작동 시간과 운전 조건을 맞췄기 때문입니다. 작동 시간이 달라지면 전력이 더 작다는 사실만으로 총 에너지까지 더 작다고 판단할 수 없습니다.',
+        6:'이 예시의 비교 결론은 같은 10 s 동안 작동하는 B가 A보다 에너지를 적게 사용한다는 것입니다. 전력만 따로 비교하면 시간의 차이를 놓칠 수 있으므로, 총 사용량을 판단할 때는 전력과 시간을 함께 보아야 합니다.',
+        7:'배터리에 표시된 저장 에너지는 실제로 꺼내 쓸 수 있는 에너지와 구분해야 합니다. 변환 과정과 사용 환경이 개입하기 때문입니다. 원문에 효율이나 실제 사용 가능량이 없다면 특정 손실률을 가정해서 사용 시간을 계산할 근거도 없습니다.',
+        9:'비교는 전력 확인 → 작동 시간 확인 → 단위를 맞춘 에너지 계산 → 같은 운전 조건의 결과 비교 순서로 진행합니다. 이 순서는 전력의 크기와 총 사용량을 혼동하지 않기 위한 것입니다.',
+        10:r'운동 에너지는 \(E_k=\frac{1}{2}mv^2\)로 계산합니다. 질량 kg과 속력 m/s를 넣으면 에너지의 단위가 J가 됩니다. 속력이 변하는 운동에서는 해당 시점의 속력을 써야 하므로 한 시점의 계산값을 전체 운동에 그대로 적용할 수 없습니다.'}
+    entry=lambda i,*support:{'claim_id':c(i),'support_ids':[c(j) for j in support],
+        'explanation':ref(prose.get(i,TEXTS[i-1][1]),i,*support)}
+    digests=iter([
+        '전력은 사용 속도, 에너지는 사용한 양입니다. 일정한 전력과 작동 시간을 함께 봅니다.',
+        '같은 10 s에서 A는 1,000 J, B는 600 J. 비교는 같은 시간·운전 조건이 전제입니다.',
+        '표시된 저장량을 실제 사용량으로 단정하지 않습니다. 없는 효율·손실률은 가정하지 않습니다.',
+        '수식에는 적용 조건이 있습니다. 속력이 달라지면 해당 시점의 운동 에너지를 다시 계산합니다.'])
+    topic=lambda heading,overview,group,entries:{'heading':heading,'digest':ref(next(digests),*[int(e['claim_id'][1:]) for e in entries]),
+        'overview':overview,'groups':[{'heading':group,'entries':entries}]}
     plan={'title':source['title'],
         'message':ref('에너지 사용량은 전력과 작동 시간을 함께 봐야 합니다. 같은 10 s 동안 정격 전력을 유지하는 예시에서 장치 A는 1,000 J, B는 600 J를 사용합니다.',2,3,4,6),
         'sections':[
@@ -69,14 +84,14 @@ def bundle(kind='comparison'):
     summary={'title':report['title'],'message':report['message']|{'kind':'argument'},'layout':kind,'report':report,
         'sections':extraction[0]['sections'],'partial':False,'failed_chunks':0,'chunk_count':1,'processed_chunks':1,
         'missing_segments':[],'verification':'test-double','engine':'test-double','model':'curated-visual-fixture',
-        'prompt_version':'curated-example-2','source_hash':source['hash'],'options':{'mode':'detail'}}
+        'prompt_version':'curated-example-3','source_hash':source['hash'],'options':{'mode':'detail'}}
     return source,summary
 
 
 def render_examples():
     import fitz
     from chansum.render import render_outputs
-    root=Path(__file__).resolve().parents[1]/'test-results'/'report-v2'
+    root=Path(__file__).resolve().parents[1]/'test-results'/'report-v3'
     for kind in ['comparison','concept','flow','chart']:
         source,summary=bundle(kind);folder=root/kind
         render_outputs(folder,'visual-example',summary,source,'http://127.0.0.1:9417')

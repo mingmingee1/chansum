@@ -1,6 +1,6 @@
 [project]
 name = "chansum"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local, evidence-linked reading library"
 requires-python = ">=3.11,<3.15"
 dependencies = [

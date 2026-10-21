@@ -29,30 +29,47 @@ def diagram(summary, source, item_id='', local_base='http://127.0.0.1:9417'):
         for index,ref in enumerate(list(dict.fromkeys(ids))[:max(1,min(4,int(width//116)))]):
             link=evidence_url(item_id,source,ref,local_base)
             body.append(f'<a href="{esc(link)}"><text x="{x+index*116}" y="{y}" font-size="20" fill="{BLUE}">[{esc(ref)}]</text></a>')
-    text('CHANSUM  /  RESEARCH NOTES',64,52,1072,19,BLUE,600)
-    y=112
-    y+=text(report['title'],64,y,1072,46,INK,700)+18
-    rect(64,y,5,22,BLUE)
-    y+=text(report['message']['text'],86,y+28,1038,29,INK,500)+40
-    refs(report['message']['sources'],86,y);y+=54
-    body.append(f'<line x1="64" y1="{y}" x2="1136" y2="{y}" stroke="#cedbea"/>')
-    y+=48
-    y+=text(visual['title'],64,y,1072,29,BLUE,700)+24
+    text('CHANSUM  /  인포그래픽 요약',64,48,1072,21,BLUE,600)
+    y=106
+    y+=text(report['title'],64,y,1072,40,INK,700)+12
+    start=len(body)
+    h=text(report['message']['text'],90,y+40,1020,27,'#fff',500)
+    body.insert(start,f'<rect x="64" y="{y}" width="1072" height="{h+55}" rx="10" fill="{BLUE}"/>')
+    y+=h+82
+    refs(report['message']['sources'],80,y);y+=32
+    if all('digest' in s for s in report['sections']):
+        text('핵심 주제 한눈에 보기',64,y,1072,24,INK,700);y+=27
+        for index in range(0,len(report['sections']),2):
+            start=len(body);panels=[];heights=[]
+            for offset,topic in enumerate(report['sections'][index:index+2]):
+                x=64+552*offset
+                text(f'{index+offset+1:02}',x+22,y+39,52,22,BLUE,700)
+                heading_h=text(topic['heading'],x+76,y+39,420,25,INK,700)
+                digest_h=text(topic['digest']['text'],x+22,y+heading_h+56,474,24,INK)
+                height=heading_h+digest_h+82
+                refs(topic['digest']['sources'],x+22,y+height-22,474)
+                panels.append((x,height));heights.append(height)
+            row_height=max(heights)
+            for x,_ in panels:
+                body.insert(start,f'<rect x="{x}" y="{y}" width="520" height="{row_height}" rx="8" fill="#f0f5ff"/>')
+            y+=row_height+14
+        y+=24
+    y+=text(visual['title'],64,y,1072,27,BLUE,700)+12
     kind=visual['kind']
     if kind=='comparison':
         label_w=188;cell_w=(1072-label_w)/len(visual['columns'])
-        header_h=max(70,max(len(c)//max(1,int((cell_w-32)/27))+1 for c in visual['columns'])*42+28)
+        header_h=max(62,max(len(c)//max(1,int((cell_w-32)/25))+1 for c in visual['columns'])*38+24)
         rect(64,y,1072,header_h,'#edf3ff')
         text('비교 기준',82,y+40,label_w-28,23,MUTED,600)
         for i,label in enumerate(visual['columns']):text(label,int(64+label_w+i*cell_w+18),y+40,cell_w-36,27,BLUE,700)
         y+=header_h
         for row in visual['rows']:
-            row_y=y;heights=[text(row['label'],82,y+43,label_w-32,25,INK,600)+48]
+            row_y=y;heights=[text(row['label'],82,y+34,label_w-32,24,INK,600)+36]
             for i,cell in enumerate(row['cells']):
                 x=int(64+label_w+i*cell_w+18)
-                h=text(cell['text'],x,y+43,cell_w-36,26)
-                refs(cell['sources'],x,y+43+h+12,cell_w-36);heights.append(h+91)
-            y+=max(heights)+12
+                h=text(cell['text'],x,y+34,cell_w-36,24)
+                refs(cell['sources'],x,y+34+h+8,cell_w-36);heights.append(h+59)
+            y+=max(heights)+8
             body.append(f'<line x1="64" y1="{y}" x2="1136" y2="{y}" stroke="#cedbea"/>')
         y+=30
     elif kind=='chart':
@@ -70,12 +87,36 @@ def diagram(summary, source, item_id='', local_base='http://127.0.0.1:9417'):
             text(str(index+1),83,y+26,40,24,'#fff',600)
             left=text(node['label'],146,y+27,320,29,INK,700)
             right=text(node['detail'],510,y+27,620,27)
-            height=max(left,right)+56
-            refs(node['sources'],510,y+height);y+=height+26
+            height=max(left,right)+40
+            refs(node['sources'],510,y+height);y+=height+16
             if index<len(visual['edges']):
                 edge=visual['edges'][index]
                 body.append(f'<path d="M91 {y-12} v34" fill="none" stroke="{BLUE}" stroke-width="3" marker-end="url(#arrow)"/>')
-                text(edge['label'],146,y+15,930,22,MUTED);y+=55
+                text(edge['label'],146,y+15,930,22,MUTED);y+=42
+    elif kind=='concept' and visual['edges'] and len({e['to_key'] for e in visual['edges']})==1 and len(visual['nodes'])<=4:
+        # A grounded convergence relation: actual edges meet the target concept.
+        target_key=visual['edges'][0]['to_key']
+        nodes={n['key']:n for n in visual['nodes']}
+        others=[n for n in visual['nodes'] if n['key']!=target_key]
+        heights=[]
+        for node in visual['nodes']:
+            _,h1=svg_text(node['label'],0,0,360/26,26)
+            _,h2=svg_text(node['detail'],0,0,360/24,24)
+            heights.append(h1+h2+78)
+        box_h=max(heights);gap=22;full_h=len(others)*(box_h+gap)-gap
+        positions={n['key']:(64,y+i*(box_h+gap)) for i,n in enumerate(others)}
+        positions[target_key]=(720,y+(full_h-box_h)/2)
+        for edge in visual['edges']:
+            a=positions[edge['from_key']];b=positions[edge['to_key']]
+            ay=a[1]+box_h/2;by=b[1]+box_h/2
+            body.append(f'<path d="M{a[0]+416} {ay} C590 {ay} 600 {by} {b[0]-10} {by}" stroke="{BLUE}" stroke-width="3" fill="none" marker-end="url(#arrow)"/>')
+            text(edge['label'],502,ay-28 if by>=ay else ay+36,190,20,MUTED)
+        for key,(x,top) in positions.items():
+            node=nodes[key];rect(x,top,416,box_h,'#edf8f7' if key==target_key else '#f1f5fb',radius=10)
+            h=text(node['label'],x+24,top+39,366,26,INK,700)
+            text(node['detail'],x+24,top+h+54,366,24)
+            refs(node['sources'],x+24,top+box_h-21,366)
+        y+=full_h+36
     else:
         for index in range(0,len(visual['nodes']),2):
             row=[]
@@ -98,16 +139,16 @@ def diagram(summary, source, item_id='', local_base='http://127.0.0.1:9417'):
     for note in visual['notes']:
         y+=12
         text('조건 · 유의점',64,y+24,1072,22,BLUE,700)
-        h=text(note['text'],64,y+65,1072,25)
-        refs(note['sources'],64,y+80+h);y+=h+121
-    y+=34
+        h=text(note['text'],64,y+58,1072,24)
+        refs(note['sources'],64,y+67+h);y+=h+100
+    y+=18
     body.append(f'<line x1="64" y1="{y}" x2="1136" y2="{y}" stroke="#cedbea"/>')
     footer=f'원문 {len(source["segments"])}구간 · 주제 {len(report["sections"])}개 · 상세 설명과 근거는 다음 페이지'
     if summary.get('partial'):footer='부분 완료 · 미처리 원문 있음 · '+footer
     if summary.get('verification')=='test-double':footer='검증용 예시 · 실제 AI 요약 아님 · '+footer
     y+=36+text(footer,64,y+36,1072,20,MUTED)
     height=int(y+32)
-    if height>1900:
+    if height>2050:
         raise WorkError('output_layout','인포그래픽의 내용이 A4에서 읽을 수 있는 분량을 넘었습니다. 핵심 요약으로 재생성해 주세요. 기존 결과는 보존됩니다.')
     font_uri=(ASSETS/'NotoSansKR.ttf').as_uri()
     katex=(ASSETS/'katex/katex.min.css').read_text(encoding='utf-8').replace('url(fonts/','url('+(ASSETS/'katex/fonts').as_uri()+'/')
@@ -128,11 +169,12 @@ def document(item_id,summary,source,svg,local_base):
     labels={'fact':'핵심','argument':'논거','condition':'조건','exception':'예외','formula':'수식'}
     def entry(value,depth=0):
         if 'children' in value:
-            result=''.join(section(s,f'',depth+1) for s in value['children'])
+            result=prose(value['narrative'],'claim') if value.get('narrative') else ''
+            result+=''.join(section(s,f'',depth+1) for s in value['children'])
         else:
             item=value['item'];kind=item['kind']
             label=f'<span class="kind">{labels[kind]}</span>' if kind in ('condition','exception','formula') else ''
-            result=f'<div class="claim {kind}">{label}{prose(item)}</div>'
+            result=f'<div class="claim {kind}">{label}{prose(value.get("narrative",item))}</div>'
         if value.get('supporting'):
             result+='<div class="supporting">'+''.join(entry(v,depth+1) for v in value['supporting'])+'</div>'
         return result
