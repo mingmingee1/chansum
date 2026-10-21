@@ -17,13 +17,16 @@ from .errors import WorkError
 
 def wrap(text: str, width: float) -> list[str]:
     lines, line, used = [], '', 0.0
-    for char in text.replace('\n',' '):
-        units = 1 if unicodedata.east_asian_width(char) in ('W','F') else .57
-        if used+units > width and line:
-            lines.append(line.rstrip())
-            line, used = '', 0
-        line += char
-        used += units
+    measure=lambda value:sum(1 if unicodedata.east_asian_width(c) in ('W','F') else .57 for c in value)
+    for token in re.findall(r'\S+\s*',text.replace('\n',' ')):
+        size=measure(token.rstrip())
+        if line and used+size>width:
+            lines.append(line.rstrip());line='';used=0
+        for char in token:
+            units=measure(char)
+            if used+units>width and line:
+                lines.append(line.rstrip());line='';used=0
+            line+=char;used+=units
     if line:
         lines.append(line.rstrip())
     return lines or ['']
@@ -34,7 +37,7 @@ def svg_text(text: str, x: int, y: int, width: float, font=28, color='#192942', 
         estimate = MATH_RE.sub('수식 '*6,text)
         height = len(wrap(estimate,width))*round(font*1.55)+font*2
         return (f'<foreignObject x="{x}" y="{y-font}" width="{int(width*font)}" height="{height}">'
-                f'<div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Noto,sans-serif;font-size:{font}px;line-height:1.55;color:{color};font-weight:{weight};overflow-wrap:anywhere">{safe_text(text)}</div></foreignObject>'),height
+                f'<div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Noto,sans-serif;font-size:{font}px;line-height:1.55;color:{color};font-weight:{weight};word-break:keep-all;overflow-wrap:anywhere">{safe_text(text)}</div></foreignObject>'),height
     lines = wrap(text,width)
     parts = [f'<text x="{x}" y="{y}" fill="{color}" font-size="{font}" font-weight="{weight}">']
     for index,line in enumerate(lines):
@@ -53,7 +56,10 @@ def short(text: str, length: int):
     return text[:length].rstrip()+('…' if length<len(text) else '')
 
 
-def infographic(summary: dict, source: dict) -> str:
+def infographic(summary: dict, source: dict, item_id: str = '', local_base: str = 'http://127.0.0.1:9417') -> str:
+    if summary.get('report'):
+        from .design import diagram
+        return diagram(summary,source,item_id,local_base)
     body = []
     title, title_h = svg_text(short(summary['title'],70),64,124,24,font=44,weight=700)
     body += ['<text x="64" y="54" fill="#2563eb" font-size="20" letter-spacing="3">CHANSUM / READING NOTES</text>', title]
@@ -109,6 +115,7 @@ MATH_RE = re.compile(r'\\\((.*?)\\\)|\\\[(.*?)\\\]',re.S)
 
 
 def safe_text(text: str) -> str:
+    text = unicodedata.normalize('NFC',text)
     parts, position = [], 0
     for match in MATH_RE.finditer(text):
         parts.append(html.escape(text[position:match.start()]))
@@ -138,6 +145,9 @@ def external_url(value) -> str | None:
 
 
 def output_html(item_id: str, summary: dict, source: dict, svg: str, local_base: str) -> str:
+    if summary.get('report'):
+        from .design import document
+        return document(item_id,summary,source,svg,local_base)
     sections = []
     labels = {'condition':'조건','exception':'예외','formula':'수식','argument':'논거','fact':'핵심'}
     for section in summary['sections']:
@@ -183,7 +193,7 @@ def browser_options() -> dict:
 def render_outputs(folder: Path, item_id: str, summary: dict, source: dict, local_base: str):
     folder.mkdir(parents=True,exist_ok=True)
     write_json(folder/'summary.json',summary)
-    svg = infographic(summary,source)
+    svg = infographic(summary,source,item_id,local_base)
     (folder/'infographic.svg').write_text(svg,encoding='utf-8')
     document = output_html(item_id,summary,source,svg,local_base)
     (folder/'report.html').write_text(document,encoding='utf-8')
@@ -243,7 +253,7 @@ def render_outputs(folder: Path, item_id: str, summary: dict, source: dict, loca
                 page.locator('.cover svg').screenshot(path=str(folder/'infographic.png'),scale='css')
                 page.evaluate("document.querySelector('.cover').removeAttribute('style');document.querySelector('.cover svg').removeAttribute('style');")
                 page.set_viewport_size({'width':665,'height':1000})
-                if page.evaluate('''() => [...document.querySelectorAll('.summary-item .katex,.evidence .katex')].some(node=>node.getBoundingClientRect().width>node.closest('.summary-item,.evidence').clientWidth+2)'''):
+                if page.evaluate('''() => [...document.querySelectorAll('.summary-item .katex,.claim .katex,.evidence .katex,.lead .katex,.topic-overview .katex')].some(node=>node.getBoundingClientRect().width>node.closest('.summary-item,.claim,.evidence,.lead,.topic-overview').clientWidth+2)'''):
                     raise WorkError('output_layout','수식이 A4 본문 폭을 넘었습니다. 분할 한도나 정리 옵션을 줄여 재생성해 주세요. 기존 결과는 보존됩니다.')
                 page.pdf(path=str(folder/'report.pdf'),format='A4',print_background=True,prefer_css_page_size=True,
                          display_header_footer=True,header_template='<span></span>',

@@ -14,8 +14,9 @@ from .engine import Engine, PROMPT_VERSION, cache_key, chunk_source, validate_su
 from .errors import Cancelled, WorkError
 from .deletion import cleanup as cleanup_deletions
 from .render import render_outputs
+from .report import build_report
 
-ACTIVE = ('queued','collecting','summarizing','rendering','interrupted')
+ACTIVE = ('queued','collecting','summarizing','editing','rendering','interrupted')
 
 
 def enqueue(db: DB, item_id: str, options: dict, refresh=False, source_override: str | None = None, connection=None) -> str:
@@ -86,7 +87,7 @@ class Worker:
     def start(self):
         cleanup_deletions(self.db)
         with self.db.connect() as connection:
-            connection.execute("UPDATE jobs SET status='interrupted',stage='interrupted',resume_count=resume_count+1,updated_at=? WHERE status IN ('collecting','summarizing','rendering')",(now(),))
+            connection.execute("UPDATE jobs SET status='interrupted',stage='interrupted',resume_count=resume_count+1,updated_at=? WHERE status IN ('collecting','summarizing','editing','rendering')",(now(),))
             connection.execute("UPDATE jobs SET status='cancelled',stage='cancelled' WHERE item_id IN (SELECT id FROM items WHERE deleted_at IS NOT NULL) AND status IN ('queued','interrupted')")
         self.thread = threading.Thread(target=self.loop,name='chansum-worker',daemon=True)
         self.thread.start()
@@ -195,8 +196,11 @@ class Worker:
             if not results:
                 raise failures[0] if failures else WorkError('empty_summary','완료된 요약 구간이 없습니다.')
             failed_count = len(chunks)-len(results)
-            summary = {'title':results[0]['title'],'message':results[0]['message'],
-                       'layout':results[0]['layout'] if len(results)==1 else 'concept',
+            report,report_hits=build_report(results,source,self.engine,config,model_options|{'partial':bool(failed_count)},
+                                           self.db.root/'cache',run,lambda *args:self.progress(job,*args),lambda:self.guard(job))
+            self.db.execute('UPDATE jobs SET cache_hits=? WHERE id=?',(hits+report_hits,job['id']))
+            summary = {'title':report['title'],'message':report['message']|{'kind':'argument'},
+                       'layout':report['visual']['kind'],'report':report,
                        'sections':[section for result in results for section in result['sections']],
                        'partial':bool(failed_count),'failed_chunks':failed_count,'chunk_count':len(chunks),
                        'processed_chunks':len(results),'prompt_version':PROMPT_VERSION,
@@ -206,7 +210,7 @@ class Worker:
                        'source_hash':source['hash'],'options':options,
                        'verification':'test-double' if getattr(self.engine,'is_test_double',False) else 'live-engine',
                        'missing_segments':sorted({s['id'] for i,c in enumerate(chunks) if state.get(str(i),{}).get('status')!='complete' for s in c})}
-            self.progress(job,'rendering',len(chunks)+1,len(chunks)+2)
+            self.progress(job,'rendering',0,1)
             self.db.execute('UPDATE jobs SET result_path=? WHERE id=?',(str(run.relative_to(self.db.root)),job['id']))
             render_outputs(run,job['item_id'],summary,source,self.local_base)
             self.guard(job)
@@ -219,7 +223,7 @@ class Worker:
                                    (str(run.relative_to(self.db.root)),job['source_path'],status,
                                     'partial_chunks' if failed_count else None,error_message,now(),job['item_id'],job['id']))
         except Cancelled:
-            self.db.execute("UPDATE jobs SET status=?,stage=?,updated_at=? WHERE id=? AND status IN ('queued','collecting','summarizing','rendering','interrupted')",
+            self.db.execute("UPDATE jobs SET status=?,stage=?,updated_at=? WHERE id=? AND status IN ('queued','collecting','summarizing','editing','rendering','interrupted')",
                             ('interrupted' if self.stop_event.is_set() else 'cancelled',
                              'interrupted' if self.stop_event.is_set() else 'cancelled',now(),job['id']))
         except WorkError as error:

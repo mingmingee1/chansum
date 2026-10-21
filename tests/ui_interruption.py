@@ -15,11 +15,13 @@ OUT=ROOT/'test-results'
 
 
 def run():
+    stage=os.environ.get('CHANSUM_INTERRUPT_STAGE','summarizing')
+    assert stage in ('summarizing','editing')
     suffix=uuid.uuid4().hex[:6]
     data=Path('/workspace')/('chansum-interruption-'+suffix)
     private=Path('/workspace')/('chansum-interruption-private-'+suffix)
     environment=os.environ.copy()
-    environment.update({'CHANSUM_TEST_DATA':str(data),'CHANSUM_TEST_PRIVATE':str(private),'CHANSUM_PORT':'9424','CHANSUM_TEST_PORT':'9424','CHANSUM_TEST_DELAY':'12'})
+    environment.update({'CHANSUM_TEST_DATA':str(data),'CHANSUM_TEST_PRIVATE':str(private),'CHANSUM_PORT':'9424','CHANSUM_TEST_PORT':'9424','CHANSUM_TEST_DELAY':'12' if stage=='summarizing' else '0','CHANSUM_TEST_EDIT_DELAY':'12' if stage=='editing' else '0'})
     log=(OUT/'interruption-server.log').open('w')
     process=None
     def start():
@@ -45,14 +47,15 @@ def run():
             deadline=time.monotonic()+20
             while time.monotonic()<deadline:
                 jobs=httpx.get('http://127.0.0.1:9424/api/jobs',trust_env=False).json()['jobs']
-                if jobs and jobs[0]['status']=='summarizing':break
+                if jobs and jobs[0]['status']==stage:break
                 page.wait_for_timeout(100)
             job=jobs[0]
-            assert job['status']=='summarizing',job
+            assert job['status']==stage,job
             before=httpx.get('http://127.0.0.1:9424/api/items/'+job['item_id'],trust_env=False).json()
             assert before['source'] and not before['summary']
             process.kill();process.wait(timeout=10)
             environment['CHANSUM_TEST_DELAY']='0'
+            environment['CHANSUM_TEST_EDIT_DELAY']='0'
             start()
             page.reload(wait_until='networkidle')
             expect(page.locator('.job-row .status.complete')).to_be_visible(timeout=90000)
@@ -62,9 +65,11 @@ def run():
             assert after['jobs'][0]['resume_count']==1
             assert after['item']['source_path']==before['item']['source_path']
             assert after['summary'] and after['item']['status']=='complete'
+            assert after['summary']['report']
+            if stage=='editing':assert after['jobs'][0]['cache_hits']>=1
             page.screenshot(path=str(OUT/'ui-interruption-resumed.png'),full_page=True)
             browser.close()
-        (OUT/'interruption-check.json').write_text(json.dumps({'process_killed_during':'summarizing','resume_count':1,'same_source_path':True,'status':'complete','test_double':True},indent=2))
+        (OUT/f'{stage}-interruption-check.json').write_text(json.dumps({'process_killed_during':stage,'resume_count':1,'same_source_path':True,'status':'complete','test_double':True},indent=2))
         print('Actual process interruption + browser reload + saved-source recovery passed.')
     finally:
         if process and process.poll() is None:

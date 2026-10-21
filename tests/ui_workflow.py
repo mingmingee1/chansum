@@ -35,6 +35,9 @@ def run():
         expect(job_row.locator('.status.complete')).to_be_visible(timeout=90000)
         page.get_by_role('button',name='에너지 검증 '+suffix,exact=True).click()
         expect(page.get_by_role('tab',name='요약',exact=True)).to_be_visible()
+        expect(page.get_by_role('navigation',name='보고서 목차')).to_be_visible()
+        page.get_by_role('navigation',name='보고서 목차').get_by_role('button').first.click()
+        expect(page.locator('.report-topic').first).to_be_visible()
         item_id=page.url.split('#item/')[1].split('/')[0]
         page.get_by_role('button',name='제목 변경',exact=True).click()
         page.get_by_label('제목',exact=True).fill('에너지 읽기 노트 '+suffix)

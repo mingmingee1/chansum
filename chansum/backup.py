@@ -22,7 +22,7 @@ MAX_BACKUP = 512 * 1024 * 1024
 
 
 def idle(db: DB):
-    if db.one("SELECT id FROM jobs WHERE status IN ('queued','collecting','summarizing','rendering','interrupted') LIMIT 1"):
+    if db.one("SELECT id FROM jobs WHERE status IN ('queued','collecting','summarizing','editing','rendering','interrupted') LIMIT 1"):
         raise WorkError('busy','처리 중인 작업을 완료하거나 취소한 뒤 백업·복원을 진행해 주세요.')
 
 
@@ -129,8 +129,8 @@ def restore_backup(db: DB, archive_path: Path, worker=None) -> dict:
                     count = connection.execute('SELECT count(*) FROM items').fetchone()[0]
                     # Normal backups are idle. An imported unfinished job must
                     # never silently trigger a credentialed/paid request.
-                    connection.execute("UPDATE items SET status='cancelled',active_job=NULL,error_code='restored_unfinished',error_message='백업의 미완료 작업입니다. AI 설정 확인 후 재시도해 주세요.' WHERE active_job IN (SELECT id FROM jobs WHERE status IN ('queued','collecting','summarizing','rendering','interrupted'))")
-                    connection.execute("UPDATE jobs SET status='cancelled',stage='cancelled',error_code='restored_unfinished',error_message='복원한 미완료 작업입니다. 설정 확인 후 재시도해 주세요.' WHERE status IN ('queued','collecting','summarizing','rendering','interrupted')")
+                    connection.execute("UPDATE items SET status='cancelled',active_job=NULL,error_code='restored_unfinished',error_message='백업의 미완료 작업입니다. AI 설정 확인 후 재시도해 주세요.' WHERE active_job IN (SELECT id FROM jobs WHERE status IN ('queued','collecting','summarizing','editing','rendering','interrupted'))")
+                    connection.execute("UPDATE jobs SET status='cancelled',stage='cancelled',error_code='restored_unfinished',error_message='복원한 미완료 작업입니다. 설정 확인 후 재시도해 주세요.' WHERE status IN ('queued','collecting','summarizing','editing','rendering','interrupted')")
                     # Providers and credentials are configured on this machine.
                     # A library backup must not silently redirect future inputs.
                     connection.execute('DELETE FROM settings')

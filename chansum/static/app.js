@@ -2,8 +2,8 @@
 let csrf = document.querySelector('meta[name=chansum-token]').content;
 const $ = (s, root=document) => root.querySelector(s);
 const state = {lists:[],items:[],jobs:[],selected:new Set(),q:'',sort:'latest',kind:'',view:'library',listId:'',detail:null,tab:'summary'};
-const activeStates = new Set(['queued','collecting','summarizing','rendering','interrupted']);
-const labels = {queued:'대기',collecting:'수집 중',summarizing:'요약 중',rendering:'출력 중',complete:'완료',partial:'부분 완료',failed:'실패',interrupted:'중단 · 재개 대기',cancelled:'취소됨'};
+const activeStates = new Set(['queued','collecting','summarizing','editing','rendering','interrupted']);
+const labels = {queued:'대기',collecting:'수집 중',summarizing:'요약 중',editing:'보고서 구성 중',rendering:'출력 중',complete:'완료',partial:'부분 완료',failed:'실패',interrupted:'중단 · 재개 대기',cancelled:'취소됨'};
 const kinds = {youtube:'유튜브',web:'웹페이지',file:'파일'};
 const kindLabels = {fact:'핵심',argument:'논거',condition:'조건',exception:'예외',formula:'수식'};
 const paths = {
@@ -204,6 +204,20 @@ function evidenceLinks(item,source,refs) {
   return el('div',{class:'evidence-links'},refs.map(ref=>button(ref,()=>{state.tab='source';renderTab();const row=document.getElementById('segment-'+ref);if(row){row.classList.add('highlight');row.scrollIntoView({behavior:'smooth',block:'center'});}})));
 }
 function summaryItem(item,source,value){return el('div',{class:'summary-item'},el('span',{class:'item-kind'},kindLabels[value.kind]||'핵심'),el('p',{},mathText(value.text)),evidenceLinks(item,source,value.sources));}
+function reportSection(item,source,section,number,depth=0) {
+  const host=el('section',{class:'report-topic'},el('h'+Math.min(2+depth,5),{},number+' '+section.heading),
+    el('div',{class:'report-intro'},el('p',{},mathText(section.overview.text)),evidenceLinks(item,source,section.overview.sources)));
+  function entry(value) {
+    const node=el('div',{class:'report-entry'});
+    if(value.item)node.append(summaryItem(item,source,value.item));
+    if(value.children)value.children.forEach((child,index)=>node.append(reportSection(item,source,child,number+'.'+(index+1),depth+2)));
+    if(value.supporting?.length)node.append(el('div',{class:'report-support'},value.supporting.map(entry)));
+    return node;
+  }
+  section.groups.forEach((group,index)=>host.append(el('h'+Math.min(3+depth,6),{},number+'.'+(index+1)+' '+group.heading),
+    el('ol',{class:'report-arguments'},group.entries.map(value=>el('li',{},entry(value))))));
+  return host;
+}
 function renderTab() {
   const data=state.detail;if(!data)return;const host=$('#tab-content');if(!host)return;
   const {item,source,summary}=data;document.querySelectorAll('.tabs button').forEach(b=>{b.classList.toggle('active',b.dataset.tab===state.tab);b.setAttribute('aria-selected',String(b.dataset.tab===state.tab));});host.replaceChildren();
@@ -224,7 +238,12 @@ function renderTab() {
   if(summary.partial)column.append(el('p',{class:'inline-error'},'부분 완료 · '+summary.failed_chunks+'개 구간 미처리. 빠진 구간: '+summary.missing_segments.join(', ')));
   if(summary.verification==='test-double')column.append(el('p',{class:'inline-error'},'검증용 AI 테스트 대역으로 만든 결과입니다. 실제 AI 요약이 아닙니다.'));
   column.append(el('div',{class:'overview'},mathText(summary.message.text),evidenceLinks(item,source,summary.message.sources)));
-  summary.sections.forEach(section=>column.append(el('section',{class:'summary-section'},el('h2',{},section.heading),section.items.map(value=>summaryItem(item,source,value)))));
+  if(summary.report) {
+    const toc=el('nav',{class:'report-toc','aria-label':'보고서 목차'},el('h2',{},'목차'));
+    summary.report.sections.forEach((section,index)=>toc.append(button((index+1)+'. '+section.heading,()=>document.getElementById('report-topic-'+index)?.scrollIntoView({behavior:'smooth',block:'start'}),'toc-link')));
+    column.append(toc);
+    summary.report.sections.forEach((section,index)=>{const node=reportSection(item,source,section,String(index+1));node.id='report-topic-'+index;column.append(node);});
+  } else summary.sections.forEach(section=>column.append(el('section',{class:'summary-section'},el('h2',{},section.heading),section.items.map(value=>summaryItem(item,source,value)))));
   column.append(el('p',{class:'hint'},'요약 엔진: '+summary.engine+' · 모델: '+summary.model+' · 처리 '+summary.processed_chunks+'/'+summary.chunk_count+'구간 · '+summary.prompt_version));host.append(column);
 }
 async function detailView(id,sourceRef=null) {
@@ -265,7 +284,7 @@ async function settingsView() {
   const result=el('div',{class:'validation-result',role:'status'});
   engine.addEventListener('change',()=>{if(engine.value==='ollama'){endpoint.value='http://127.0.0.1:11434';limit.value=Math.min(Number(limit.value),4000);model.placeholder='예: qwen3:8b · 32K 문맥을 지원하는 설치 모델';}else if(engine.value==='openai'){endpoint.value='https://api.openai.com/v1';model.placeholder='사용 가능한 API 모델 이름';}else model.placeholder='비워 두면 CLI 기본 모델 사용';});
   async function save(){await api('/settings',{method:'PUT',body:{engine:engine.value,model:model.value,base_url:endpoint.value,api_key:key.value||null,clear_api_key:clear.checked,chunk_chars:Number(limit.value),timeout:Number(timeout.value),youtube_fallback:fallback.checked}});key.value='';clear.checked=false;}
-  const ai=el('section',{class:'setting-section'},el('h2',{},'요약 엔진'),el('p',{class:'inline-info'},data.engine_status.message),field('연결 방식',engine),field('모델',model,'실제 사용 가능한 모델 이름을 입력하세요. 모델·프롬프트·원문·옵션별로 요약을 캐시합니다.'),field('API 또는 Ollama 서버 주소',endpoint,'Codex CLI에서는 이 주소와 API 키를 사용하지 않습니다.'),field('API 키',key,'키는 서버의 별도 설정 폴더에 보관하며 DB·백업·로그·프런트엔드 코드에 포함하지 않습니다.'),el('label',{class:'hint'},clear,' 저장된 API 키 지우기'),el('div',{style:'height:22px'}),el('div',{class:'form-row'},field('분할 원문 한도 (문자)',limit,'요약 프롬프트·JSON 공간은 별도로 필요합니다.'),field('AI 응답 제한 (초)',timeout)),el('label',{class:'hint'},fallback,' 필요할 때 yt-dlp로 유튜브 자막 보완 수집'),el('div',{style:'height:22px'}),el('div',{class:'setting-buttons'},button('설정 저장',()=>safely(async()=>{await save();toast('설정을 저장했습니다.');}),'primary'),button('실제 연결 테스트',async e=>{const b=e.currentTarget;b.disabled=true;result.textContent='실제 AI를 호출하고 있습니다. 선택한 서비스의 이용량이 발생할 수 있습니다.';try{await save();const response=await api('/engine/test',{method:'POST'});result.className='validation-result success';result.textContent=response.message;}catch(error){result.className='validation-result error';result.textContent=error.message;}finally{b.disabled=false;}}),button('Codex 로그인',()=>safely(async()=>{const response=await api('/engine/login',{method:'POST'});toast(response.message);}))),result);
+  const ai=el('section',{class:'setting-section'},el('h2',{},'요약 엔진'),el('p',{class:'inline-info'},data.engine_status.message),el('p',{class:'hint'},'구간별 요약 후 보고서 구성에도 AI를 호출합니다. 긴 자료는 여러 번 호출하며 선택한 서비스의 이용량이 발생할 수 있습니다. 열람·다운로드는 저장된 결과를 사용합니다.'),field('연결 방식',engine),field('모델',model,'실제 사용 가능한 모델 이름을 입력하세요. 모델·프롬프트·원문·옵션별로 요약을 캐시합니다.'),field('API 또는 Ollama 서버 주소',endpoint,'Codex CLI에서는 이 주소와 API 키를 사용하지 않습니다.'),field('API 키',key,'키는 서버의 별도 설정 폴더에 보관하며 DB·백업·로그·프런트엔드 코드에 포함하지 않습니다.'),el('label',{class:'hint'},clear,' 저장된 API 키 지우기'),el('div',{style:'height:22px'}),el('div',{class:'form-row'},field('분할 원문 한도 (문자)',limit,'요약 프롬프트·JSON 공간은 별도로 필요합니다.'),field('AI 응답 제한 (초)',timeout)),el('label',{class:'hint'},fallback,' 필요할 때 yt-dlp로 유튜브 자막 보완 수집'),el('div',{style:'height:22px'}),el('div',{class:'setting-buttons'},button('설정 저장',()=>safely(async()=>{await save();toast('설정을 저장했습니다.');}),'primary'),button('실제 연결 테스트',async e=>{const b=e.currentTarget;b.disabled=true;result.textContent='실제 AI를 호출하고 있습니다. 선택한 서비스의 이용량이 발생할 수 있습니다.';try{await save();const response=await api('/engine/test',{method:'POST'});result.className='validation-result success';result.textContent=response.message;}catch(error){result.className='validation-result error';result.textContent=error.message;}finally{b.disabled=false;}}),button('Codex 로그인',()=>safely(async()=>{const response=await api('/engine/login',{method:'POST'});toast(response.message);}))),result);
   const dataSection=el('section',{class:'setting-section'},el('h2',{},'로컬 데이터'),el('p',{},'코드와 사용자 데이터는 별도 위치에 보관합니다. 앱을 업데이트해도 이 폴더를 유지하면 라이브러리가 남습니다.'),el('div',{class:'path-box'},data.data_dir),el('p',{},'비밀키 설정 폴더 (백업 제외)'),el('div',{class:'path-box'},data.config_dir),el('p',{class:'hint'},'저장 위치를 바꾸려면 서버를 종료하고 데이터 폴더를 옮긴 뒤 CHANSUM_DATA_DIR을 지정하세요. 앱이 실행 중일 때 DB 파일만 따로 옮기지 마세요.'));
   if(data.pending_cleanup)dataSection.append(el('p',{class:'inline-error'},data.pending_cleanup+'개 자료의 잠긴 파일이 삭제 대기 중입니다. 파일을 사용하는 프로그램을 닫은 뒤 앱을 다시 실행해 정리해 주세요.'));
   const restoreFile=el('input',{type:'file',accept:'.zip','aria-label':'복원할 Chansum 백업'});

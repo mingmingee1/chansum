@@ -251,8 +251,8 @@ def create_app(data_dir: Path | None = None, private_dir: Path | None = None, en
             for item in selected:
                 item_id = item['id']
                 if body.action=='trash':
-                    connection.execute("UPDATE jobs SET status='cancelled',stage='cancelled',updated_at=? WHERE item_id=? AND status IN ('queued','collecting','summarizing','rendering','interrupted')",(timestamp,item_id))
-                    connection.execute("UPDATE items SET deleted_at=?,active_job=NULL,status=CASE WHEN status IN ('queued','collecting','summarizing','rendering','interrupted') THEN 'cancelled' ELSE status END,updated_at=? WHERE id=?",(timestamp,timestamp,item_id))
+                    connection.execute("UPDATE jobs SET status='cancelled',stage='cancelled',updated_at=? WHERE item_id=? AND status IN ('queued','collecting','summarizing','editing','rendering','interrupted')",(timestamp,item_id))
+                    connection.execute("UPDATE items SET deleted_at=?,active_job=NULL,status=CASE WHEN status IN ('queued','collecting','summarizing','editing','rendering','interrupted') THEN 'cancelled' ELSE status END,updated_at=? WHERE id=?",(timestamp,timestamp,item_id))
                 elif body.action=='restore':
                     connection.execute('UPDATE items SET deleted_at=NULL,updated_at=? WHERE id=?',(timestamp,item_id))
                 elif body.action=='purge':
@@ -364,7 +364,7 @@ def create_app(data_dir: Path | None = None, private_dir: Path | None = None, en
         job = database.one('SELECT * FROM jobs WHERE id=?',(job_id,))
         if not job:
             raise WorkError('not_found','작업을 찾을 수 없습니다.')
-        database.execute("UPDATE jobs SET status='cancelled',stage='cancelled',updated_at=? WHERE id=? AND status IN ('queued','collecting','summarizing','rendering','interrupted')",(now(),job_id))
+        database.execute("UPDATE jobs SET status='cancelled',stage='cancelled',updated_at=? WHERE id=? AND status IN ('queued','collecting','summarizing','editing','rendering','interrupted')",(now(),job_id))
         database.execute("UPDATE items SET status='cancelled',active_job=NULL WHERE id=? AND active_job=?",(job['item_id'],job_id))
         return {'ok':True}
 
