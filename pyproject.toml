@@ -1,0 +1,22 @@
+[project]
+name = "chansum"
+version = "0.1.0"
+description = "Local, evidence-linked reading library"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+  "fastapi==0.153.0",
+  "uvicorn==0.54.0",
+  "httpx==0.28.1",
+  "python-multipart==0.0.32",
+  "trafilatura==2.3.1",
+  "youtube-transcript-api==1.2.4",
+  "yt-dlp==2026.8.19",
+  "playwright==1.64.0",
+]
+
+[dependency-groups]
+dev = ["pytest==9.1.1", "pymupdf==1.26.6", "pillow==12.3.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

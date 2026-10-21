@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="chansum-token" content="{{CSRF_TOKEN}}">
+  <title>Chansum · 나의 읽기 라이브러리</title>
+  <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/katex/katex.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+  <script defer src="/assets/katex/katex.min.js"></script>
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#library"><img src="/static/logo.svg" alt="" width="33" height="33"><span>Chansum</span></a>
+    <p class="sidebar-caption">나의 읽기 라이브러리</p>
+    <nav aria-label="주 메뉴" id="primary-nav"></nav>
+    <div class="lists-heading"><span>내 목록</span><button class="icon-button" id="new-list" aria-label="목록 만들기">+</button></div>
+    <nav aria-label="내 목록" id="list-nav"></nav>
+    <div class="sidebar-bottom"><a href="#settings" class="nav-link" id="settings-link"></a><span class="local-label"><i></i> 이 PC에 저장됩니다</span></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><span>PERSONAL KNOWLEDGE LIBRARY</span><span class="top-status" id="connection-status">로컬 연결 중</span></header>
+    <div id="test-banner" class="test-banner" hidden>검증용 서버 · AI 테스트 대역 사용 · 실제 AI 요약이 아닙니다</div>
+    <main id="main" tabindex="-1"><div class="empty"><p>라이브러리를 불러오는 중입니다.</p></div></main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
