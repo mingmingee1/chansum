@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from .config import write_json
 from .errors import WorkError
 
-REPORT_VERSION = 'chansum-report-3'
+REPORT_VERSION = 'chansum-report-4'
 
 
 class StrictModel(BaseModel):
@@ -177,6 +177,11 @@ chart: 원문에 직접 있는 동일 단위의 비음수 값만 series로 표�
 확인 가능한 수치가 없으면 chart 금지. 차트 대신 적절한 다른 구조를 선택하라.
 선택한 kind에서 사용하지 않는 배열은 []로 둔다. notes에는 해석에 필요한 핵심 조건·예외를 최대2개 쓴다.
 강의자의 의견·예측을 확정 사실로 바꾸지 마라. 수치·단위·부정·적용범위를 보존하라.
+제출 전에 초안을 원문 인용과 대조하여 고쳐라. 수치마다 대상·시점·단위·모집단이 맞는지,
+조건이 붙은 주장을 무조건적인 결론으로 바꾸지 않았는지, 저자의 전망을 사실로 쓰지 않았는지 확인하라.
+이유가 없는 항목에 이유를 창작하지 말고, 다른 조건의 수치를 비교하는 그림은 만들지 마라.
+요약문만 읽어도 '무엇을 말하는가 → 왜 그런가 → 어느 경우까지 성립하는가'가 드러나게 하라.
+원문에 없는 계산·환산 값은 쓰지 마라. 모든 수치·조건에는 이를 실제로 포함한 근거 항목을 연결하라.
 title 70자, topic.heading 55자, digest 100자, message 180자, node.label 36자,
 node.detail 90자, cell.text 80자 한도를 지켜라. overview/explanation은 최대 1400자다.
 수식은 \\( ... \\) 또는 \\[ ... \\] 구분자를 사용한다.
@@ -277,6 +282,25 @@ def validate_plan(value, units, source):
             if (not math.isfinite(value) or value<0
                     or not any(exact_source_value(source_text.get(ref,''),quote,value,datum['unit']) for ref in ids)):
                 raise WorkError('invalid_chart','차트의 값·단위·인용을 보관 원문에서 확인할 수 없습니다.')
+    from .grounding import check_grounding
+    source_text = {s['id']:s['text'] for s in source['segments']}
+    def grounded(text, ids):
+        refs = {r for cid in ids for r in unit_sources(by_id[cid])}
+        check_grounding(text, [source_text[r] for r in refs], 'unsupported_report')
+    def label_text(value):
+        # Diagram numbering is presentation metadata, not a measured quantity.
+        return re.sub(r'(?:단계|근거|주제)\s+\d+(?=\s|$)', '', value)
+    grounded(plan['title'], list(by_id))
+    grounded(plan['message']['text'], plan['message']['claim_ids'])
+    for section in plan['sections']:
+        for field in ('digest','overview'):
+            grounded(section[field]['text'], section[field]['claim_ids'])
+        for group in section['groups']:
+            for entry in group['entries']:
+                grounded(entry['explanation']['text'], entry['explanation']['claim_ids'])
+    for obj in [*visual['nodes'], *visual['edges'], *visual['notes'], *visual['series'], *[c for row in visual['rows'] for c in row['cells']]]:
+        for field in ('text','detail','label'):
+            if field in obj: grounded(label_text(obj[field]) if field=='label' else obj[field], obj['claim_ids'])
     return plan
 
 
@@ -317,7 +341,7 @@ def build_report(results, source, engine, config, options, cache: Path, run: Pat
     initial_count=len(units)
     write_json(run/'claims.json',units)
     budget=max(6000,min(config.get('chunk_chars',12000),16000))
-    journal, hits=[],0
+    journal, hits, repairs=[],0,[]
     for level in range(7):
         batches=pack_units(units,budget)
         next_units=[]
@@ -335,7 +359,18 @@ def build_report(results, source, engine, config, options, cache: Path, run: Pat
                 except (WorkError,ValueError,OSError):
                     path.unlink(missing_ok=True)
             if plan is None:
-                plan=validate_plan(engine.edit_report(batch,options,config,run/'work'),batch,source)
+                call_options=dict(options)
+                for attempt in range(2):
+                    guard()
+                    candidate=engine.edit_report(batch,call_options,config,run/'work')
+                    try:
+                        plan=validate_plan(candidate,batch,source)
+                        break
+                    except WorkError as error:
+                        repairs.append({'level':level,'batch':index,'attempt':attempt+1,'code':error.code})
+                        write_json(run/'quality-checks.json',{'rejected':repairs})
+                        if attempt: raise
+                        call_options['_repair_feedback']=error.message
                 guard()
                 write_json(path,plan)
             result=materialize(plan,batch)

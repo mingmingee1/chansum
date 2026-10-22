@@ -59,7 +59,7 @@ def fixture_plan(units):
     sections=[]
     for start in range(0,len(units),12):
         part=units[start:start+12]
-        sections.append({'heading':f'검증용 주제 {start//12+1}',
+        sections.append({'heading':'검증용 주제',
             'digest':{'text':'근거·조건 보존과 시각 요약 출력을 확인하는 테스트 주제입니다.','claim_ids':[part[0]['id']]},
             'overview':{'text':'원문 근거의 주장과 적용 조건을 확인합니다.','claim_ids':[part[0]['id']]},
             'groups':[{'heading':'내용과 관련 조건','entries':[{'claim_id':u['id'],'support_ids':[],

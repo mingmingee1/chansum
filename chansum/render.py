@@ -190,12 +190,30 @@ def browser_options() -> dict:
     return {'executable_path':executable} if executable else {}
 
 
+def svg_sheet(pages):
+    """One editable SVG and PNG can contain all paginated infographic panels."""
+    if len(pages)==1:return pages[0]
+    elements=[];top=0
+    for value in pages:
+        height=int(re.search(r'<svg[^>]* height="(\d+)"',value)[1])
+        elements.append(value.replace('<svg ',f'<svg x="0" y="{top}" ',1))
+        top+=height+24
+    return f'<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="{top-24}" viewBox="0 0 1200 {top-24}"><rect width="1200" height="100%" fill="white"/>'+''.join(elements)+'</svg>'
+
+
 def render_outputs(folder: Path, item_id: str, summary: dict, source: dict, local_base: str):
     folder.mkdir(parents=True,exist_ok=True)
     write_json(folder/'summary.json',summary)
-    svg = infographic(summary,source,item_id,local_base)
+    if summary.get('report'):
+        from .design import diagram
+        pages=diagram(summary,source,item_id,local_base,paginate=True)
+    else:
+        pages=[infographic(summary,source,item_id,local_base)]
+    svg=svg_sheet(pages)
     (folder/'infographic.svg').write_text(svg,encoding='utf-8')
-    document = output_html(item_id,summary,source,svg,local_base)
+    document = output_html(item_id,summary,source,pages if summary.get('report') else svg,local_base)
+    if not summary.get('report'):
+        document=document.replace('<div class="cover">'+svg+'</div>','<div class="infographic-pages"><div class="cover">'+svg+'</div></div>')
     (folder/'report.html').write_text(document,encoding='utf-8')
     try:
         with sync_playwright() as playwright:
@@ -233,25 +251,31 @@ def render_outputs(folder: Path, item_id: str, summary: dict, source: dict, loca
                 if errors:
                     raise WorkError('math_render','수식을 조판하지 못했습니다. 기존 결과는 보존됩니다. 원문 수식과 AI 출력을 확인해 주세요.')
                 page.evaluate('document.fonts.ready')
-                overflow = page.evaluate('''() => {
-                    const svg=document.querySelector('.cover svg');
-                    const boundary=svg.viewBox.baseVal;
-                    return [...svg.querySelectorAll('text')].some(node=>{
-                      const r=node.getBBox();return r.x<0 || r.y<0 || r.x+r.width>boundary.width+2 || r.y+r.height>boundary.height+2;
-                    }) || [...svg.querySelectorAll('foreignObject')].some(node=>{
+                layout = page.evaluate('''() => [...document.querySelectorAll('.cover svg')].map(svg=>{
+                    const boundary=svg.getBoundingClientRect();
+                    const boxes=[...svg.querySelectorAll('text'), ...[...svg.querySelectorAll('foreignObject')].map(node=>node.firstElementChild)].map(node=>node.getBoundingClientRect());
+                    const outside=boxes.some(r=>r.left<boundary.left-1 || r.top<boundary.top-1 || r.right>boundary.right+1 || r.bottom>boundary.bottom+1);
+                    const mathOverflow=[...svg.querySelectorAll('foreignObject')].some(node=>{
                       const child=node.firstElementChild;return child.scrollWidth>node.width.baseVal.value+2 || child.scrollHeight>node.height.baseVal.value+2;
                     });
-                }''')
-                if overflow:
-                    raise WorkError('output_layout','인포그래픽의 제목·수식이 배치 범위를 넘었습니다. 핵심 요약 모드로 재생성해 주세요. 기존 결과는 보존됩니다.')
+                    let overlaps=0;
+                    boxes.forEach((a,i)=>boxes.slice(i+1).forEach(b=>{
+                      if(Math.min(a.right,b.right)-Math.max(a.left,b.left)>2 && Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>2)overlaps++;
+                    }));
+                    return {height:svg.viewBox.baseVal.height,outside,mathOverflow,overlaps};
+                })''')
+                write_json(folder/'layout-check.json',{'pages':layout})
+                if any(p['outside'] or p['mathOverflow'] or p['overlaps'] for p in layout):
+                    raise WorkError('output_layout','인포그래픽에 겹치거나 배치 범위를 넘는 글자·수식이 있습니다. 기존 결과는 보존됩니다.')
                 page.locator('script').evaluate_all('(nodes)=>nodes.forEach(node=>node.remove())')
                 # Persist the already-typeset, editable originals as well as the
                 # raster/PDF; opening an HTML original needs no AI or script.
-                (folder/'infographic.svg').write_text(page.locator('.cover svg').evaluate('(node)=>node.outerHTML').replace(render_base+'/assets',ASSETS.as_uri()),encoding='utf-8')
+                typed_pages=page.locator('.cover svg').evaluate_all('(nodes)=>nodes.map(node=>node.outerHTML)')
+                (folder/'infographic.svg').write_text(svg_sheet(typed_pages).replace(render_base+'/assets',ASSETS.as_uri()),encoding='utf-8')
                 (folder/'report.html').write_text(page.content().replace(render_base+'/assets',ASSETS.as_uri()),encoding='utf-8')
-                page.evaluate("document.querySelector('.cover').style.height='auto';const svg=document.querySelector('.cover svg');svg.style.maxWidth='none';svg.style.maxHeight='none';svg.style.width='1200px';svg.style.height='auto';")
-                page.locator('.cover svg').screenshot(path=str(folder/'infographic.png'),scale='css')
-                page.evaluate("document.querySelector('.cover').removeAttribute('style');document.querySelector('.cover svg').removeAttribute('style');")
+                page.evaluate("document.querySelector('.infographic-pages').style.cssText='width:1200px;background:white';document.querySelectorAll('.cover').forEach(node=>node.style.cssText='height:auto;display:block;margin:0 0 24px');document.querySelectorAll('.cover svg').forEach(svg=>svg.style.cssText='max-width:none;max-height:none;width:1200px;height:auto;display:block');")
+                page.locator('.infographic-pages').screenshot(path=str(folder/'infographic.png'),scale='css')
+                page.evaluate("document.querySelector('.infographic-pages').removeAttribute('style');document.querySelectorAll('.cover,.cover svg').forEach(node=>node.removeAttribute('style'));")
                 page.set_viewport_size({'width':665,'height':1000})
                 if page.evaluate('''() => [...document.querySelectorAll('.summary-item .katex,.claim .katex,.evidence .katex,.lead .katex,.topic-overview .katex')].some(node=>node.getBoundingClientRect().width>node.closest('.summary-item,.claim,.evidence,.lead,.topic-overview').clientWidth+2)'''):
                     raise WorkError('output_layout','수식이 A4 본문 폭을 넘었습니다. 분할 한도나 정리 옵션을 줄여 재생성해 주세요. 기존 결과는 보존됩니다.')

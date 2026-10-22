@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from .config import Secrets, codex_command, codex_arguments
 from .errors import WorkError
 
-PROMPT_VERSION = 'chansum-evidence-3'
+PROMPT_VERSION = 'chansum-evidence-4'
 
 
 class EvidenceItem(BaseModel):
@@ -39,7 +39,7 @@ class Summary(BaseModel):
     sections: list[Section] = Field(min_length=1, max_length=12)
 
 
-def validate_summary(value: dict, allowed: set[str]) -> dict:
+def validate_summary(value: dict, allowed: set[str], segments: list[dict] | None = None) -> dict:
     try:
         summary = Summary.model_validate(value).model_dump()
     except (ValidationError, TypeError):
@@ -48,6 +48,9 @@ def validate_summary(value: dict, allowed: set[str]) -> dict:
     for item in items:
         if any(ref not in allowed for ref in item['sources']):
             raise WorkError('invalid_evidence','AI가 원문에 없는 근거 구간 ID를 반환했습니다. 해당 응답은 결과에서 제외했습니다.')
+        if segments is not None:
+            from .grounding import check_grounding
+            check_grounding(item['text'], [s['text'] for s in segments if s['id'] in item['sources']], 'unsupported_summary')
     return summary
 
 
@@ -134,17 +137,24 @@ class Engine:
 
     def summarize(self, segments: list[dict], options: dict, config: dict, scratch: Path) -> dict:
         text = prompt_for(segments,options.get('mode','brief'))
-        if config['engine'] == 'codex':
-            output = self._codex(text,config,scratch)
-        elif config['engine'] in ('openai','ollama'):
-            output = self._http(text,config)
-        else:
-            raise WorkError('engine_missing','요약 엔진을 설정해 주세요.')
-        return validate_summary(output,{s['id'] for s in segments})
+        for attempt in range(2):
+            if config['engine'] == 'codex':
+                output = self._codex(text,config,scratch)
+            elif config['engine'] in ('openai','ollama'):
+                output = self._http(text,config)
+            else:
+                raise WorkError('engine_missing','요약 엔진을 설정해 주세요.')
+            try:
+                return validate_summary(output,{s['id'] for s in segments},segments)
+            except WorkError as error:
+                if attempt: raise
+                text += '\n검사에서 응답이 거절되었습니다: '+error.message+'\n원문을 다시 대조하여 전체 JSON을 새로 작성하라. 수치를 계산·환산하지 말고 근거의 표기를 보존하라.'
 
     def edit_report(self, units: list[dict], options: dict, config: dict, scratch: Path) -> dict:
         from .report import ReportPlan, edit_prompt
         prompt = edit_prompt(units, options.get('partial',False), options.get('mode','detail'))
+        if options.get('_repair_feedback'):
+            prompt += '\n검사에서 이전 구성이 거절되었습니다: '+options['_repair_feedback']+'\n해당 문제와 모든 근거를 다시 검토하고 완전한 JSON을 새로 작성하라. 항목을 지워 오류를 피하지 마라.'
         schema = ReportPlan.model_json_schema()
         if config['engine']=='codex':
             return self._codex(prompt,config,scratch,schema)

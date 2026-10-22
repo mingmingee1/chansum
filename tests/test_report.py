@@ -76,7 +76,7 @@ def test_chart_does_not_convert_estimate_range_or_bound_to_exact_value(number,cr
 
 def test_chart_qualifier_in_separate_sentence_does_not_reject_exact_value():
     source,_,units=example()
-    source['segments'][0]['text']='최대 출력은 별도다. 정격 전력은 100 W다.'
+    source['segments'][0]['text']='최대 출력은 별도다. 정격 전력은 100 W다. 10 s 동안 사용한다.'
     plan=chart_plan(units);plan['visual']['series'][0]['quote']='100 W'
     validate_plan(plan,units,source)
 
@@ -90,7 +90,7 @@ def test_chart_rejects_cropped_compound_unit_and_explicitly_negated_number(text)
 
 
 def test_chart_does_not_treat_contract_word_as_approximation():
-    source,_,units=example();source['segments'][0]['text']='계약 전력은 100 W다.'
+    source,_,units=example();source['segments'][0]['text']='계약 전력은 100 W다. 10 s 동안 사용한다.'
     plan=chart_plan(units);plan['visual']['series'][0]['quote']='100 W'
     validate_plan(plan,units,source)
 

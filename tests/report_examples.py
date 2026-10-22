@@ -55,7 +55,7 @@ def bundle(kind='comparison'):
             topic('표시된 값과 실제 사용량 해석하기',ref('저장 에너지와 실제 사용 가능량을 구분하고, 없는 효율 수치를 채워 넣지 않습니다.',7,8),'확인할 정보와 계산 순서',[entry(7,8),entry(9)]),
             topic('수식의 조건과 시점 확인하기',ref('운동 에너지 계산은 해당 시점의 질량과 속력을 사용하며, 결과의 단위를 확인합니다.',10,11),'운동 에너지의 적용',[entry(10,11)])]}
     visual={'kind':kind,'title':'장치 A와 B의 전력·에너지 비교','nodes':[],'edges':[],'columns':[],'rows':[],'series':[],
-        'notes':[ref('동일한 10 s와 정격 전력 유지가 전제입니다. 기동·모드 변경 구간의 전력은 별도로 확인합니다.',4,5)]}
+        'notes':[ref('동일한 10 s와 정격 전력 유지가 전제입니다. 기동·모드 변경 구간의 전력은 별도로 확인합니다.',2,4,5)]}
     if kind=='comparison':
         visual['columns']=['장치 A','장치 B']
         visual['rows']=[{'label':label,'cells':[ref(a,*ai),ref(b,*bi)]} for label,a,ai,b,bi in [
@@ -84,14 +84,14 @@ def bundle(kind='comparison'):
     summary={'title':report['title'],'message':report['message']|{'kind':'argument'},'layout':kind,'report':report,
         'sections':extraction[0]['sections'],'partial':False,'failed_chunks':0,'chunk_count':1,'processed_chunks':1,
         'missing_segments':[],'verification':'test-double','engine':'test-double','model':'curated-visual-fixture',
-        'prompt_version':'curated-example-3','source_hash':source['hash'],'options':{'mode':'detail'}}
+        'prompt_version':'curated-example-4','source_hash':source['hash'],'options':{'mode':'detail'}}
     return source,summary
 
 
 def render_examples():
     import fitz
     from chansum.render import render_outputs
-    root=Path(__file__).resolve().parents[1]/'test-results'/'report-v3'
+    root=Path(__file__).resolve().parents[1]/'test-results'/'report-v4'
     for kind in ['comparison','concept','flow','chart']:
         source,summary=bundle(kind);folder=root/kind
         render_outputs(folder,'visual-example',summary,source,'http://127.0.0.1:9417')

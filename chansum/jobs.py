@@ -172,12 +172,12 @@ class Worker:
                     summary = None
                     if cached.exists():
                         try:
-                            summary = validate_summary(json.loads(cached.read_text(encoding='utf-8')),{s['id'] for s in segments})
+                            summary = validate_summary(json.loads(cached.read_text(encoding='utf-8')),{s['id'] for s in segments},segments)
                             hits += 1
                         except (WorkError,ValueError,OSError):
                             cached.unlink(missing_ok=True)
                     if summary is None:
-                        summary = validate_summary(self.engine.summarize(segments,options,config,self.db.root/'work'),{s['id'] for s in segments})
+                        summary = validate_summary(self.engine.summarize(segments,options,config,self.db.root/'work'),{s['id'] for s in segments},segments)
                         self.guard(job)
                         write_json(cached,summary)
                     state[str(index)] = {'status':'complete','cache_key':key,'segment_ids':[s['id'] for s in segments]}
